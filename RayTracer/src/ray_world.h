@@ -33,8 +33,15 @@ struct Light {
     F32 intensity;
     
     LightType type;
-    V3 invertedDirection;
-    V3 origin;
+    union {
+        struct {
+            V3 invertedDirection;
+        } d;
+        
+        struct {
+            V3 origin;
+        } p;
+    };
 };
 
 struct World {

@@ -127,21 +127,19 @@ V3 RayTrace(V3 rayOrigin, V3 rayDirection,
             F32 traceMaxDistance = F32_MAX;
             switch(currentLight.type) {
                 case(LightType_Directional):  {
-                    lightRayDirection = Normalize(currentLight.invertedDirection);
+                    lightRayDirection = Normalize(currentLight.d.invertedDirection);
                     
-                    //TODO(ans): add color and color intensity
-                    F32 shading = Inner(result.hitNormal, Normalize(currentLight.invertedDirection));
+                    F32 shading = Inner(result.hitNormal, Normalize(currentLight.d.invertedDirection));
                     shading= Max(shading, 0);
                     
-                    lightIntensity = {shading, shading, shading};
+                    lightIntensity = currentLight.color * currentLight.intensity * shading;
                 } break;
                 case(LightType_Point): {
-                    V3 direction = currentLight.origin - lightRayOrigin;
+                    V3 direction = currentLight.p.origin - lightRayOrigin;
                     F32 rSquare = Inner(direction);
                     lightRayDirection = Normalize(direction);
                     traceMaxDistance = SquareRoot(rSquare);
                     
-                    //TODO(ans): drill down on this function an how it works
                     V3 fallOff = (currentLight.color*currentLight.intensity) / (4.0f*PI*rSquare);
                     
                     F32 shading = Inner(result.hitNormal, Normalize(lightRayDirection));

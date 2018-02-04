@@ -1,4 +1,4 @@
-#/*
+/*
 Note:
 
 Coordinate Systems:
@@ -89,10 +89,9 @@ int main() {
     };
     
     Light lights[] = {
-        //{LightType_Directional, {0, -1, 0.2}, {}},
-        //{LightType_Directional, {-0.5, 0, 1},   {}},
-        {{1,1,1},   500, LightType_Point,       {},             {3,  0, 5}},
-        {{1,1,0.4}, 500, LightType_Point,       {},             {-3, 0, 6}}
+        {{1,1,1},   0.5, LightType_Directional, {-0.5, 0, 1}},
+        {{1,1,1},   500, LightType_Point,       {3,  0, 5}},
+        {{1,1,0.4}, 500, LightType_Point,       {-3, 0, 6}}
     };
     
     World world;
@@ -117,7 +116,7 @@ int main() {
     F32 distToCamera = 1;
     V3 filmC = cameraP - (cameraZ * distToCamera);
     
-    //assumes that the the max of width and height is 1 in vp space
+    //Note(ans): assumes that the the max of width and height is 1 in vp space
     //TODO: handle that height is greater then width 
     F32 filmWidth = 1;
     F32 filmHeight = (F32)imageHeight / (F32)imageWidth;  
