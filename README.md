@@ -1,4 +1,9 @@
 # Raytracer
+## Version
+	0.1: 
+		- Object: Planes and Spheres
+		- Lights: Colored, Directional, Point, Basic Shading
+
 ## Result
 ![Raytracer Result](https://github.com/Norskan/Portfolio/blob/master/RayTracer/run_tree/result.bmp?raw=true "Raytracer Result")
 
