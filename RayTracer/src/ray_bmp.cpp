@@ -1,4 +1,4 @@
-Internal U8 LinearToRGB(F32 v) {
+static U8 LinearToRGB(F32 v) {
     U8 result;
     
     if(v > 1.0f) {
@@ -18,7 +18,7 @@ Internal U8 LinearToRGB(F32 v) {
     return result;
 }
 
-Internal inline F32 ClampColorComponent(F32 c) {
+static inline F32 ClampColorComponent(F32 c) {
     F32 result = c;
     
     if(c > 1.0f) {
@@ -31,7 +31,7 @@ Internal inline F32 ClampColorComponent(F32 c) {
     return result;
 }
 
-Internal inline V3 ClampColor(V3 color) {
+static inline V3 ClampColor(V3 color) {
     V3 result;
     
     result.r = ClampColorComponent(color.r);
@@ -41,7 +41,7 @@ Internal inline V3 ClampColor(V3 color) {
     return result;
 }
 
-Internal U32 PackColor(V3 color) {
+static U32 PackColor(V3 color) {
     color = ClampColor(color);
     
     U8 r = (U8)(color.r * 255);
@@ -66,7 +66,7 @@ Internal U32 PackColor(V3 color) {
     return result;
 }
 
-Internal void InitBMPImage(BMP_Image* image, U32 width, U32 height) {
+static void InitBMPImage(BMP_Image* image, U32 width, U32 height) {
     U32 pixelCount = width * height;
     U32 pixelDataSize = pixelCount * sizeof(U32);
     
@@ -97,11 +97,11 @@ Internal void InitBMPImage(BMP_Image* image, U32 width, U32 height) {
     image->pixelData = pixelData;
 }
 
-Internal U32 GetPixelCount(BMP_Image* image) {
+static U32 GetPixelCount(BMP_Image* image) {
     return image->header.imageHeader.width * image->header.imageHeader.height;
 }
 
-Internal void WriteBMPImage(BMP_Image* image, char* fileName) {
+static void WriteBMPImage(BMP_Image* image, char* fileName) {
     FILE* file = fopen(fileName, "wb");
     if(!file) {
         fprintf(stderr, "Not able to open result file for writing . . .");
@@ -122,13 +122,13 @@ Internal void WriteBMPImage(BMP_Image* image, char* fileName) {
     fclose(file);
 }
 
-Internal void GetDimensions(BMP_Image* image,
-                            U32* height,
-                            U32* width) {
+static void GetDimensions(BMP_Image* image,
+                          U32* height,
+                          U32* width) {
     *height = image->header.imageHeader.height; 
     *width = image->header.imageHeader.width;
 }
 
-Internal U32* GetPackedPixelData(BMP_Image* image) {
+static U32* GetPackedPixelData(BMP_Image* image) {
     return image->pixelData;
 }

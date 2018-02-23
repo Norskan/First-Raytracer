@@ -1,18 +1,7 @@
-struct Internal_RayTraceResult {
-    U32 hit;
-    U32 hitMatIndex;
-    V3 hitNormal;
-    V3 hitPoint;
-    
-    //debug
-    U32 hitId;
-    char* hitName;
-};
-
-Internal void Internal_RayTrace(V3 rayOrigin, V3 rayDirection,
-                                World* world,
-                                F32 traceMaxDistance,
-                                Internal_RayTraceResult* result) {
+static inline void ShootRay(V3 rayOrigin, V3 rayDirection,
+                            World* world,
+                            F32 traceMaxDistance,
+                            ShootRayResult* result) {
     F32 tolerance = 0.0001;
     
     F32 hitDistance = traceMaxDistance;
@@ -26,7 +15,6 @@ Internal void Internal_RayTrace(V3 rayOrigin, V3 rayDirection,
         ++planeIndex) {
         Plane currentPlane = planes[planeIndex];
         
-        
         F32 divisor = Inner(rayDirection, currentPlane.n);
         
         if((divisor < tolerance) || (divisor > tolerance)) {
@@ -35,7 +23,33 @@ Internal void Internal_RayTrace(V3 rayOrigin, V3 rayDirection,
             
             if(t > tolerance &&  t < hitDistance) {
                 hitDistance = t;
-                hitMatIndex = currentPlane.matIndex;
+                
+                
+                V3 hitPoint = rayOrigin + (rayDirection * hitDistance);
+                V3 toHitPoint = hitPoint - currentPlane.p;
+                V2 project2D = CreateV2(hitPoint);
+                
+                bool checkered = ((U32)((U32)project2D.x ^ (U32)project2D.y)) & 1;
+                
+                //NOTE(ans): 
+                // because our coordinates go from -Inv to +Inv we get a invalid checker pattern
+                // at 0.
+                // this solution can be simplified by transforming the coordinates to values between
+                // 0 and +Inv but for that the scene size needs to be known which it is not at the moment
+                if(project2D.y < 0) {
+                    checkered = !checkered;
+                }
+                
+                if(project2D.x < 0) {
+                    checkered = !checkered;
+                }
+                
+                if(checkered) {
+                    hitMatIndex = currentPlane.matIndex;
+                } else {
+                    hitMatIndex = currentPlane.secMatIndex;
+                }
+                
                 hitNormal = currentPlane.n;
                 
                 result->hitName = "Plane";
@@ -96,16 +110,16 @@ Internal void Internal_RayTrace(V3 rayOrigin, V3 rayDirection,
 
 
 
-V3 RayTrace(V3 rayOrigin, V3 rayDirection,
-            World* world) {
+static inline V3 RayTrace(V3 rayOrigin, V3 rayDirection,
+                          World* world) {
     Material* materials = world->materials;
     
-    Internal_RayTraceResult result = {};
-    Internal_RayTrace(rayOrigin,
-                      rayDirection,
-                      world,
-                      F32_MAX,
-                      &result);
+    ShootRayResult result = {};
+    ShootRay(rayOrigin,
+             rayDirection,
+             world,
+             F32_MAX,
+             &result);
     
     V3 resultColor = {};
     if(result.hit) {
@@ -149,11 +163,11 @@ V3 RayTrace(V3 rayOrigin, V3 rayDirection,
                 } break;
             }
             
-            Internal_RayTraceResult lightResult = {};
-            Internal_RayTrace(lightRayOrigin, lightRayDirection,
-                              world,
-                              traceMaxDistance,
-                              &lightResult);
+            ShootRayResult lightResult = {};
+            ShootRay(lightRayOrigin, lightRayDirection,
+                     world,
+                     traceMaxDistance,
+                     &lightResult);
             
             bool selfIntersect = lightResult.hitId == result.hitId;
             F32 visible = (F32)(!lightResult.hit || (lightResult.hit && selfIntersect));
@@ -167,4 +181,127 @@ V3 RayTrace(V3 rayOrigin, V3 rayDirection,
     }
     
     return resultColor;
+}
+
+static inline  PixelSamplingPoints CalculatePixelSamplingPoints(V3 bl, 
+                                                                V3 sampleRegionX, V3 sampleRegionY,
+                                                                U32 samplesToTake, U32 samplesPerDim) {
+    //grid uniform distribution
+    PixelSamplingPoints result;
+    result.count = samplesToTake;
+    
+    V3 sampleOffsetX = sampleRegionX / (F32)samplesPerDim;
+    V3 sampleOffsetY = sampleRegionY / (F32)samplesPerDim;
+    
+    V3 sampleOffsetXHalf = sampleOffsetX / 2;
+    V3 sampleOffsetYHalf = sampleOffsetY / 2;
+    
+    V3 sampleBl = bl + sampleOffsetXHalf + sampleOffsetYHalf;
+    
+    U32 sampleCount = 0;
+    for(U32 x = 0; x < samplesPerDim; ++x) {
+        V3 sampleX = sampleOffsetX * (F32)x;
+        for(U32 y = 0; y < samplesPerDim; ++y) {
+            V3 sampleY = sampleOffsetY * (F32)y;
+            
+            V3 sample = sampleBl + sampleX + sampleY;
+            result.points[sampleCount] = sample;
+            
+            ++sampleCount;
+        }
+    }
+    
+    return result;
+}
+
+static inline void CalculateSAAData(SAAMode mode, 
+                                    F32 filmWidth, F32 filmHeight,
+                                    U32 imageWidth, U32 imageHeight,
+                                    V3 cameraX, V3 cameraY,
+                                    SAAData* data) {
+    if(mode == SAAMode_SSAA) {
+        V3 pixelSize;
+        pixelSize.x = filmWidth / imageWidth;
+        pixelSize.y = filmHeight / imageHeight;
+        
+        V3 sampleRegionX = cameraX * pixelSize.x;
+        data->sampleRegionX = sampleRegionX;
+        
+        V3 sampleRegionY = cameraY * pixelSize.y;
+        data->sampleRegionY = sampleRegionY;
+    }
+}
+
+static inline void RayTraceImage(U32 imageHeight, U32 imageWidth,
+                                 V3 cameraP, V3 cameraX, V3 cameraY,
+                                 F32 filmWidthHalf, F32 filmHeightHalf, V3 filmC,
+                                 World* world,
+                                 U32* packedPixelData,
+                                 Options* i_options,
+                                 SAAData* i_saaData) {
+    
+    SAAData ssaData = *i_saaData;
+    Options options = *i_options;
+    SAAMode saaMode = options.saaMode;
+    
+    for(U32 imageY = 0; imageY < imageHeight; ++imageY) {
+        F32 viewPortY = - 1 + 2 * ((F32)imageY / (F32)imageHeight);
+        
+        for(U32 imageX = 0; imageX < imageWidth; ++imageX) {
+            F32 viewPortX = - 1 + 2 * ((F32)imageX / (F32)imageWidth);
+            
+            V3 filmXOffset = cameraX * (viewPortX * filmWidthHalf);
+            V3 filmYOffset = cameraY * (viewPortY * filmHeightHalf);
+            
+            V3 filmP = filmC + filmXOffset + filmYOffset;
+            
+            V3 pixel = {};
+            
+            switch(saaMode) {
+                case(SAAMode_None): {
+                    V3 rayOrigin = cameraP;
+                    V3 rayDirection = Normalize(filmP - cameraP);
+                    
+                    pixel = RayTrace(rayOrigin, rayDirection,
+                                     world);
+                } break;
+                case(SAAMode_SSAA): {
+                    PixelSamplingPoints samplingPoints = CalculatePixelSamplingPoints(filmP, 
+                                                                                      ssaData.sampleRegionX, ssaData.sampleRegionY, 
+                                                                                      options.samplesToTake, options.samplesPerDim);
+                    
+                    V3Array_64 sampels;
+                    for(U32 sampleIndex = 0; sampleIndex < samplingPoints.count; ++sampleIndex) {
+                        V3 samplePoint = samplingPoints.points[sampleIndex];
+                        
+                        V3 rayOrigin = cameraP;
+                        V3 rayDirection = Normalize(samplePoint - cameraP);
+                        
+                        V3 traceResult = RayTrace(rayOrigin, rayDirection,
+                                                  world);
+                        
+                        sampels[sampleIndex] = traceResult;
+                    }
+                    
+                    //Average Filter
+                    F32 contribution = 1.0f / samplingPoints.count;
+                    for(U32 sampleIndex = 0;
+                        sampleIndex < options.samplesToTake;
+                        sampleIndex++) {
+                        pixel = pixel + (sampels[sampleIndex] * contribution);
+                    }
+                    
+                } break;
+            }
+            
+            U32 pixelIndex = imageY * imageWidth + imageX;
+            packedPixelData[pixelIndex] = PackColor(pixel); 
+        }
+        
+        if((imageY % 64) == 0) { 
+            F32 progress = (F32)imageY / (F32)imageHeight; 
+            printf("\rProgress %0.2f ", progress); 
+            fflush(stdout); 
+        }
+    }
 }

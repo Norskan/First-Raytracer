@@ -28,27 +28,21 @@ Includes
 #include "string.h"
 #include "float.h"
 
-/*
- Core definitions
-*/
-#define Internal static
 typedef unsigned char	   U8;
 typedef unsigned short      U16;
 typedef unsigned long	   U32;
+typedef unsigned long long  U64;
 typedef float			   F32;
-
 #define F32_MAX FLT_MAX
-
 #define ArraySize(array) sizeof(array) / sizeof(array[0]);
 
-/*
-Own includes
-*/
+#include "ray_os.cpp"
 #include "ray_math.h"
 #include "ray_bmp.h"
 #include "ray_bmp.cpp"
 
 #include "ray_world.h"
+#include "ray_tracing.h"
 #include "ray_tracing.cpp"
 
 /*
@@ -56,8 +50,8 @@ Defines
 */
 #define ResultFile "result.bmp"
 
-Internal void CalculateCameraAxis(V3 cameraP,
-                                  V3* cameraX, V3* cameraY, V3* cameraZ) {
+static void CalculateCameraAxis(V3 cameraP,
+                                V3* cameraX, V3* cameraY, V3* cameraZ) {
     *cameraZ = Normalize(cameraP);
     *cameraX = Normalize(Cross({0,0,1}, *cameraZ));
     *cameraY = Normalize(Cross(*cameraZ, *cameraX));
@@ -75,12 +69,13 @@ int main() {
         {{0.2,0.6,0.8}},
         {{0.8,0.8,0.8}},
         {{0,1,0}},
-        {{0,0,1}}
-    };
+        {{0,0,1}},
+        {{1,1,1}},
+        {{0,0,0}}};
     
     Plane planes[] = 
     {
-        {0, {0,0,1}, {0,0,0}, 1}
+        {0, {0,0,1}, {0,0,0}, 5, 4}
     };
     
     Sphere spheres[] = {
@@ -103,59 +98,64 @@ int main() {
     world.lights = lights;
     world.lightCount = ArraySize(lights);
     
+    Options options;
+    //options.saaMode = SAAMode_None;
+    options.saaMode = SAAMode_SSAA;
+    options.samplesToTake = 16;
+    options.samplesPerDim = 4;
+    
     U32 imageHeight; 
     U32 imageWidth;
     GetDimensions(&image, &imageHeight, &imageWidth);
     
     U32* packedPixelData = GetPackedPixelData(&image);
     
+    //NOTE(ans): setup camera looking at origin
     V3 cameraP = {0, -20, 5};
     V3 cameraX, cameraY, cameraZ;
     CalculateCameraAxis(cameraP, &cameraX, &cameraY, &cameraZ);
     
+    //NOTE(ans): setup film area to shoot rays through
     F32 distToCamera = 1;
     V3 filmC = cameraP - (cameraZ * distToCamera);
     
-    //Note(ans): assumes that the the max of width and height is 1 in vp space
+    //NOTE(ans): assumes that the the max of width and height is 1 in vp space
     //TODO: handle that height is greater then width 
     F32 filmWidth = 1;
     F32 filmHeight = (F32)imageHeight / (F32)imageWidth;  
-    
     F32 filmWidthHalf = filmWidth * 0.5f;
     F32 filmHeightHalf = filmHeight * 0.5f;
     
-    for(U32 imageY = 0; imageY < imageHeight; ++imageY) {
-        F32 viewPortY = - 1 + 2 * ((F32)imageY / (F32)imageHeight);
-        
-        for(U32 imageX = 0; imageX < imageWidth; ++imageX) {
-            F32 viewPortX = - 1 + 2 * ((F32)imageX / (F32)imageWidth);
-            
-            
-            V3 filmXOffset = cameraX * (viewPortX * filmWidthHalf);
-            V3 filmYOffset = cameraY * (viewPortY * filmHeightHalf);
-            
-            V3 filmP = filmC + filmXOffset + filmYOffset;
-            
-            V3 rayOrigin = cameraP;
-            V3 rayDirection = Normalize(filmP - cameraP);
-            
-            V3 rayCastResult = RayTrace(rayOrigin, rayDirection,
-                                        &world);
-            
-            U32 pixelIndex = imageY * imageWidth + imageX;
-            packedPixelData[pixelIndex] = PackColor(rayCastResult); 
-        }
-        
-        if((imageY % 64) == 0) {
-            F32 progress = (F32)imageY / (F32)imageHeight;
-            printf("\rProgress %0.2f ", progress);
-            fflush(stdout);
-        }
-    }
+    
+    SAAData saaData;
+    CalculateSAAData(options.saaMode,
+                     filmWidth, filmHeight,
+                     imageWidth, imageHeight,
+                     cameraX, cameraY,
+                     &saaData);
+    
+    U64 startTimeStamp = GetTimeStamp();
+    U64 startTicks = GetCPUTicks(); 
+    
+    RayTraceImage(imageHeight, imageWidth,
+                  cameraP, cameraX, cameraY,
+                  filmWidthHalf, filmHeightHalf, filmC,
+                  &world,
+                  packedPixelData,
+                  &options,
+                  &saaData);
+    
+    U64 endTicks = GetCPUTicks();
+    U64 endTimeStamp = GetTimeStamp();
     
     WriteBMPImage(&image, ResultFile);
     
+    printf("\n-------------------------------------\n");
+    printf("Performance:\n");
+    printf("Ticks:        %llu\n", endTicks - startTicks);
+    printf("Microseconds: %llu\n", endTimeStamp - startTimeStamp);
+    printf("-------------------------------------\n");
     
-    printf("\nFinished ray tracing . . .\n");
+    printf("Finished ray tracing . . .\n");
     return 0;
 }

@@ -13,6 +13,7 @@ struct Plane {
     V3 p;
     
     U32 matIndex;
+    U32 secMatIndex;
 };
 
 struct Sphere {

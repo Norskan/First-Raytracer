@@ -1,8 +1,12 @@
 # Raytracer
 ## Version
 	0.1: 
-		- Object: Planes and Spheres
+		- Collision Object: Planes and Spheres
 		- Lights: Colored, Directional, Point, Basic Shading
+	0.2:
+		- Performance Metrics in Ticks and Milliseconds
+		- Optional SSAA Antialiasing with variable sample rate
+		- Plane now always renders in a checker pattern
 
 ## Result
 ![Raytracer Result](https://github.com/Norskan/Portfolio/blob/master/RayTracer/run_tree/result.bmp?raw=true "Raytracer Result")
