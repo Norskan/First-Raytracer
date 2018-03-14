@@ -7,7 +7,9 @@
 		- Performance Metrics in Ticks and Milliseconds
 		- Optional SSAA Antialiasing with variable sample rate
 		- Plane now always renders in a checker pattern
-
+	0.3:
+		- Soft Shadows
+		- Specular, Diffuced Materials 
 ## Result
 ![Raytracer Result](https://github.com/Norskan/Portfolio/blob/master/RayTracer/run_tree/result.bmp?raw=true "Raytracer Result")
 
