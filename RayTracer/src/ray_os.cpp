@@ -3,6 +3,8 @@ Windows
 */
 #include <windows.h>
 
+#define DebuggerBreak() DebugBreak()
+
 static U64 GetCPUTicks() {
     LARGE_INTEGER result;
     BOOL success = QueryPerformanceCounter(&result);

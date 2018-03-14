@@ -5,6 +5,8 @@ structure
 
 struct Material {
     V3 color;
+    F32 reflection;
+    F32 absorbtion;
 };
 
 struct Plane {

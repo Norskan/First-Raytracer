@@ -4,11 +4,15 @@ enum SAAMode {
 };
 
 struct Options {
+    // Anti Aliasing
     SAAMode saaMode;
-    
-    //saa
     U32 samplesToTake;
     U32 samplesPerDim;
+    
+    // Soft Shadow
+    U32 samplesPerShading;
+    V3* sampleDataBuffer;
+    F32 sampleRegionSize;
 };
 
 struct ShootRayResult {

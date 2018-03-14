@@ -1,8 +1,8 @@
-static inline void ShootRay(V3 rayOrigin, V3 rayDirection,
-                            World* world,
-                            F32 traceMaxDistance,
-                            ShootRayResult* result) {
-    F32 tolerance = 0.0001;
+static inline void RayTraceObjects(V3 rayOrigin, V3 rayDirection,
+                                   World* world,
+                                   F32 traceMaxDistance,
+                                   ShootRayResult* result) {
+    F32 tolerance = 0.01;
     
     F32 hitDistance = traceMaxDistance;
     V3 hitNormal = {};
@@ -17,7 +17,7 @@ static inline void ShootRay(V3 rayOrigin, V3 rayDirection,
         
         F32 divisor = Inner(rayDirection, currentPlane.n);
         
-        if((divisor < tolerance) || (divisor > tolerance)) {
+        if((divisor < -tolerance) || (divisor > tolerance)) {
             F32 divident = Inner(currentPlane.p, currentPlane.n) - Inner(rayOrigin, currentPlane.n);
             F32 t = divident / divisor;
             
@@ -108,33 +108,73 @@ static inline void ShootRay(V3 rayOrigin, V3 rayDirection,
     result->hitPoint = rayOrigin+(rayDirection*hitDistance);
 }
 
-
-
-static inline V3 RayTrace(V3 rayOrigin, V3 rayDirection,
-                          World* world) {
-    Material* materials = world->materials;
+static inline void GenerateLightSamples(V3* result, U32 resultCount,
+                                        V3 hitNormal, V3 hitPoint,
+                                        F32 sampleSize) {
+    F32 shadowBias = 0.0001f;
+    F32 lowerBound = 0.0000001f;
     
-    ShootRayResult result = {};
-    ShootRay(rayOrigin,
-             rayDirection,
-             world,
-             F32_MAX,
-             &result);
+    V3 sampleOrigin = hitPoint + hitNormal * shadowBias;
     
-    V3 resultColor = {};
-    if(result.hit) {
-        Light* lights = world->lights;
-        U32 lightCount = world->lightCount;
+    V3 v;
+    
+    if(lowerBound > hitNormal.x && lowerBound > hitNormal.y) {
+        v.x = hitNormal.z;
+        v.y = 0;
+        v.z = -hitNormal.x;
+    } else {
+        v.x = -hitNormal.y;
+        v.y = hitNormal.x;
+        v.z = 0;
+    }
+    
+    V3 w = Cross(hitNormal, v);
+    
+    
+    F32 radius = sampleSize;
+    for(U32 resultIndex = 0; resultIndex < resultCount; ++ resultIndex) {
+        //generate 2d sample in circle
+        F32 angle = RandUnitF32() * TAU;
+        F32 r = radius * SquareRoot(RandUnitF32());
         
-        F32 lightContribution = 1.0f / lightCount;
-        V3 materialColor = materials[result.hitMatIndex].color;
-        for(U32 lightIndex = 0; 
-            lightIndex < lightCount;
-            ++lightIndex) {
-            Light currentLight = lights[lightIndex];
-            
-            F32 shadowBias = 0.0001f;
-            V3 lightRayOrigin = result.hitPoint + result.hitNormal * shadowBias;
+        F32 x = r * (F32)cos(angle);
+        F32 y = r * (F32)sin(angle);
+        
+        //transform samples to hit normal system
+        V3 samplePoint = (v * x) + (w * y);
+        
+        //transform samples to hitpoint
+        samplePoint = samplePoint + sampleOrigin;
+        
+        result[resultIndex] = samplePoint;
+    }
+    
+}
+
+static inline V3 RayTraceLights(World* world,
+                                U32 objectId, V3 materialColor, 
+                                V3 hitNormal, V3 hitPoint,
+                                U32 lightSamplePointCount, V3* lightSampleDataBuffer, F32 sampleRegion) {
+    V3 resultColor = {};
+    
+    Light* lights = world->lights;
+    U32 lightCount = world->lightCount;
+    
+    
+    F32 lightContribution = 1.0f / lightCount;
+    for(U32 lightIndex = 0; 
+        lightIndex < lightCount;
+        ++lightIndex) {
+        Light currentLight = lights[lightIndex];
+        V3 colorShading = {};
+        
+        GenerateLightSamples(lightSampleDataBuffer, lightSamplePointCount, 
+                             hitNormal, hitPoint,
+                             sampleRegion);
+        
+        F32 lightSampleContribution = 1.0f / lightSamplePointCount;
+        for(U32 lightSamplePointIndex = 0; lightSamplePointIndex < lightSamplePointCount; ++lightSamplePointIndex){
+            V3 lightRayOrigin = lightSampleDataBuffer[lightSamplePointIndex];
             
             V3 lightRayDirection = {};
             V3 lightIntensity = {1,1,1};
@@ -143,7 +183,7 @@ static inline V3 RayTrace(V3 rayOrigin, V3 rayDirection,
                 case(LightType_Directional):  {
                     lightRayDirection = Normalize(currentLight.d.invertedDirection);
                     
-                    F32 shading = Inner(result.hitNormal, Normalize(currentLight.d.invertedDirection));
+                    F32 shading = Inner(hitNormal, Normalize(currentLight.d.invertedDirection));
                     shading= Max(shading, 0);
                     
                     lightIntensity = currentLight.color * currentLight.intensity * shading;
@@ -156,7 +196,7 @@ static inline V3 RayTrace(V3 rayOrigin, V3 rayDirection,
                     
                     V3 fallOff = (currentLight.color*currentLight.intensity) / (4.0f*PI*rSquare);
                     
-                    F32 shading = Inner(result.hitNormal, Normalize(lightRayDirection));
+                    F32 shading = Inner(hitNormal, Normalize(lightRayDirection));
                     shading = Max(shading, 0);
                     
                     lightIntensity = fallOff * shading;
@@ -164,23 +204,146 @@ static inline V3 RayTrace(V3 rayOrigin, V3 rayDirection,
             }
             
             ShootRayResult lightResult = {};
-            ShootRay(lightRayOrigin, lightRayDirection,
-                     world,
-                     traceMaxDistance,
-                     &lightResult);
+            RayTraceObjects(lightRayOrigin, lightRayDirection,
+                            world, 
+                            traceMaxDistance,
+                            &lightResult);
             
-            bool selfIntersect = lightResult.hitId == result.hitId;
+            bool selfIntersect = lightResult.hitId == objectId;
             F32 visible = (F32)(!lightResult.hit || (lightResult.hit && selfIntersect));
             
             
-            V3 shading = (lightIntensity * visible);
-            resultColor = resultColor + materialColor * shading * lightContribution;
+            colorShading = colorShading + (lightIntensity  * visible * lightSampleContribution);
+            
         }
-    } else {
-        resultColor = materials[result.hitMatIndex].color;
+        
+        resultColor = resultColor + materialColor * colorShading * lightContribution;
     }
     
     return resultColor;
+}
+
+static inline V3 CalculateColor(V3 rayOrigin, V3 rayDirection,
+                                World* world,
+                                U32 lightSamplePointCount, V3* lightSampleDataBuffer, F32 sampleRegion,
+                                U32 depth, U32 lastHitId) {
+    Material* materials = world->materials;
+    
+    
+    ShootRayResult result = {};
+    RayTraceObjects(rayOrigin,
+                    rayDirection,
+                    world,
+                    F32_MAX,
+                    &result);
+    
+    if(result.hit) {
+        
+#if DEBUG_SELFINTERSECTION 
+        if(result.hitId == lastHitId) {
+            DebuggerBreak();
+        }
+#endif
+        
+        
+        Material material = materials[result.hitMatIndex];
+        
+        V3 shadedColor = RayTraceLights(world,
+                                        result.hitId, material.color, 
+                                        result.hitNormal, result.hitPoint,
+                                        lightSamplePointCount, lightSampleDataBuffer, sampleRegion);
+        V3 color = shadedColor;
+        
+        
+        
+        if(depth < 8) {
+            //Note(ans):
+            //offset origin by an offest, because intersections can under the actual objects because
+            //of rounding errors
+            V3 newRayOrigin = result.hitPoint;
+            
+            V3 specularDirection = VectorReflected(rayDirection, result.hitNormal);
+            
+            V3 unitSphereOrigin = newRayOrigin + result.hitNormal;
+            V3 randomPoint = RandomPointInUnitSphere(unitSphereOrigin);
+            V3 diffuseDirection = randomPoint - newRayOrigin;
+            
+            V3 specularColor = CalculateColor(newRayOrigin, specularDirection,
+                                              world,
+                                              lightSamplePointCount, lightSampleDataBuffer, sampleRegion,
+                                              depth + 1, result.hitId);
+            
+#if 0            
+            V3 diffuseColor = CalculateColor(newRayOrigin, diffuseDirection,
+                                             world,
+                                             lightSamplePointCount, lightSampleDataBuffer, sampleRegion,
+                                             depth + 1, result.hitId);
+#endif
+            
+            V3 diffuseColor = color;
+            
+            V3 reflectionColor = Lerp(diffuseColor, material.reflection, specularColor);  
+            
+            color = Lerp(reflectionColor, material.absorbtion, color);
+        }
+        
+        return color;
+    } else {
+        return materials[result.hitMatIndex].color;
+    }
+}
+
+static inline V3 RayTraceWorld(V3 rayOrigin, V3 rayDirection,
+                               World* world,
+                               U32 lightSamplePointCount, V3* lightSampleDataBuffer, F32 sampleRegion) {
+#if 0    
+    Material* materials = world->materials;
+    V3 resultColor = {1,1,1};
+    
+    U32 maxBounceRays = 8;
+    
+    
+    for(U32 bounceRayIndex = 0; bounceRayIndex < maxBounceRays; ++bounceRayIndex) {
+        ShootRayResult result = {};
+        RayTraceObjects(rayOrigin,
+                        rayDirection,
+                        world,
+                        F32_MAX,
+                        &result);
+        
+        if(result.hit) {
+            V3 materialColor = materials[result.hitMatIndex].color;
+            
+            V3 shadedColor = RayTraceLights(world,
+                                            result.hitId, materialColor, 
+                                            result.hitNormal, result.hitPoint,
+                                            lightSamplePointCount, lightSampleDataBuffer, sampleRegion);
+            
+            if(materials[result.hitMatIndex].reflects) {
+                resultColor = Lerp(resultColor, 0.5f, shadedColor);
+                
+                rayOrigin = result.hitPoint;
+                rayDirection = VectorReflected(rayDirection, result.hitNormal);
+            } 
+            else {
+                resultColor = resultColor * shadedColor;
+            }
+            
+        } else {
+            resultColor = materials[result.hitMatIndex].color;
+            break;
+        }
+    }
+    
+    return resultColor;
+#else
+    
+    return CalculateColor(rayOrigin, rayDirection,
+                          world,
+                          lightSamplePointCount, lightSampleDataBuffer, sampleRegion,
+                          0, U32_MAX);
+    
+#endif
 }
 
 static inline  PixelSamplingPoints CalculatePixelSamplingPoints(V3 bl, 
@@ -262,8 +425,9 @@ static inline void RayTraceImage(U32 imageHeight, U32 imageWidth,
                     V3 rayOrigin = cameraP;
                     V3 rayDirection = Normalize(filmP - cameraP);
                     
-                    pixel = RayTrace(rayOrigin, rayDirection,
-                                     world);
+                    pixel = RayTraceWorld(rayOrigin, rayDirection,
+                                          world,
+                                          options.samplesPerShading, options.sampleDataBuffer, options.sampleRegionSize);
                 } break;
                 case(SAAMode_SSAA): {
                     PixelSamplingPoints samplingPoints = CalculatePixelSamplingPoints(filmP, 
@@ -277,8 +441,9 @@ static inline void RayTraceImage(U32 imageHeight, U32 imageWidth,
                         V3 rayOrigin = cameraP;
                         V3 rayDirection = Normalize(samplePoint - cameraP);
                         
-                        V3 traceResult = RayTrace(rayOrigin, rayDirection,
-                                                  world);
+                        V3 traceResult = RayTraceWorld(rayOrigin, rayDirection,
+                                                       world,
+                                                       options.samplesPerShading, options.sampleDataBuffer, options.sampleRegionSize);
                         
                         sampels[sampleIndex] = traceResult;
                     }

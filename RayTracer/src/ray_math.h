@@ -4,6 +4,25 @@
 Constants
 */
 #define PI 3.14159265359f
+#define TAU 6.28318530718f
+
+/*
+Rand
+*/
+
+#include "time.h" //time
+static inline void InitRand() {
+    srand((unsigned int)time(NULL));
+}
+
+//returns values between 0 and 1
+static inline F32 RandUnitF32() {
+    F32 result;
+    
+    result = (F32)rand() / (F32)RAND_MAX;
+    
+    return result;
+}
 
 /*
 F32
@@ -77,6 +96,16 @@ V3 operator-(V3 v1, V3 v2) {
     return result;
 }
 
+V3 operator-(V3 v, F32 c) {
+    V3 result;
+    
+    result.x = v.x - c;
+    result.y = v.y - c;
+    result.z = v.z - c;
+    
+    return result;
+}
+
 V3 operator*(V3 v, F32 scalar) {
     V3 result;
     
@@ -85,6 +114,11 @@ V3 operator*(V3 v, F32 scalar) {
     result.z = v.z * scalar;
     
     return result;
+}
+
+
+V3 operator*(F32 scalar, V3 v) {
+    return v * scalar;
 }
 
 V3 operator*(V3 v1, V3 v2) {
@@ -164,6 +198,57 @@ static inline F32 Length(V3 v) {
     F32 result;
     
     result = Inner(v, v);
+    
+    return result;
+}
+
+static inline V3 VectorReflected(V3 v, V3 n) {
+    V3 result;
+    
+    F32 l = Inner(v, n);
+    V3 _n = n * l;
+    
+    V3 _n2 = _n * 2;
+    
+    result = v - _n2;
+    
+    return result;
+}
+
+
+static inline V3 Lerp(V3 a, F32 t, V3 b) {
+    V3 result;
+    
+    result = (a * (1 - t)) + (b * t);
+    
+    return result;
+}
+
+static inline V3 RandomUnitVector() {
+    V3 result;
+    
+    result.x = RandUnitF32();
+    result.y = RandUnitF32();
+    result.z = RandUnitF32();
+    
+    return result;
+}
+
+static inline V3 RandomPointInUnitSphere(V3 origin) {
+    V3 result;
+    
+    V3 randomPoint;
+    
+    do {
+        V3 v;
+        v.x = RandUnitF32();
+        v.y = RandUnitF32();
+        v.z = RandUnitF32();
+        
+        randomPoint = 2.0f * v - 1.0f;
+    } while(LengthRoot(randomPoint) >= 1.0f);
+    
+    result = randomPoint;
     
     return result;
 }

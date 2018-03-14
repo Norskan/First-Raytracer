@@ -34,6 +34,7 @@ typedef unsigned long	   U32;
 typedef unsigned long long  U64;
 typedef float			   F32;
 #define F32_MAX FLT_MAX
+#define U32_MAX ULONG_MAX
 #define ArraySize(array) sizeof(array) / sizeof(array[0]);
 
 #include "ray_os.cpp"
@@ -43,6 +44,9 @@ typedef float			   F32;
 
 #include "ray_world.h"
 #include "ray_tracing.h"
+
+
+#define DEBUG_SELFINTERSECTION 1
 #include "ray_tracing.cpp"
 
 /*
@@ -59,19 +63,22 @@ static void CalculateCameraAxis(V3 cameraP,
 
 int main() {
     printf("Start ray tracing . . .\n");
+    InitRand();
     
     BMP_Image image;
     InitBMPImage(&image,
-                 1600, 900);
+                 1280, 720);
     
     Material materials[] 
     {
-        {{0.2,0.6,0.8}},
-        {{0.8,0.8,0.8}},
-        {{0,1,0}},
-        {{0,0,1}},
-        {{1,1,1}},
-        {{0,0,0}}};
+        {{0.2,0.6,0.8}, 0,    1},
+        {{0.8,0.8,0.8}, 0,    1},
+        {{0,1,0},       0,    0.4f},
+        {{0,0,1},       1,    0.0f},
+        {{1,1,1},       0,    1},
+        {{0,0,0},       0,    1},
+        {{0,0,1},       0.5f, 0.5f}
+    };
     
     Plane planes[] = 
     {
@@ -79,8 +86,9 @@ int main() {
     };
     
     Sphere spheres[] = {
-        {1, {0,0,1}, 1, 2},
-        {2, {2,0,2}, 1, 3}
+        {1, {-2,0,1}, 1, 2},
+        {2, {0,0,1},  1, 3},
+        {3, {2,0,1},  1, 6}
     };
     
     Light lights[] = {
@@ -98,11 +106,24 @@ int main() {
     world.lights = lights;
     world.lightCount = ArraySize(lights);
     
-    Options options;
-    //options.saaMode = SAAMode_None;
-    options.saaMode = SAAMode_SSAA;
-    options.samplesToTake = 16;
-    options.samplesPerDim = 4;
+    Options maxOptions;
+    maxOptions.saaMode = SAAMode_SSAA;
+    maxOptions.samplesToTake = 16;
+    maxOptions.samplesPerDim = 4;
+    maxOptions.samplesPerShading = 256;
+    maxOptions.sampleDataBuffer = (V3*)malloc(sizeof(V3) * maxOptions.samplesPerShading);
+    maxOptions.sampleRegionSize = 0.5;
+    
+    Options devOptions;
+    devOptions.saaMode = SAAMode_SSAA;
+    devOptions.samplesToTake = 4;
+    devOptions.samplesPerDim = 2;
+    devOptions.samplesPerShading = 128;
+    devOptions.sampleDataBuffer = (V3*)malloc(sizeof(V3) * devOptions.samplesPerShading);
+    devOptions.sampleRegionSize = 0.5;
+    
+    Options options = devOptions;
+    //options = maxOptions;
     
     U32 imageHeight; 
     U32 imageWidth;
@@ -150,10 +171,12 @@ int main() {
     
     WriteBMPImage(&image, ResultFile);
     
+    U64 microseconds = endTimeStamp - startTimeStamp;
     printf("\n-------------------------------------\n");
     printf("Performance:\n");
     printf("Ticks:        %llu\n", endTicks - startTicks);
-    printf("Microseconds: %llu\n", endTimeStamp - startTimeStamp);
+    printf("Microseconds: %llu\n", microseconds);
+    printf("Seconds:      %llu\n", (microseconds / 1000) / 1000);
     printf("-------------------------------------\n");
     
     printf("Finished ray tracing . . .\n");
