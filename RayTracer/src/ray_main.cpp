@@ -123,7 +123,7 @@ int main() {
     devOptions.sampleRegionSize = 0.5;
     
     Options options = devOptions;
-    //options = maxOptions;
+    options = maxOptions;
     
     U32 imageHeight; 
     U32 imageWidth;
