@@ -45,3 +45,26 @@ struct PixelSamplingPoints {
     V3Array_64 points;
     U32 count;
 };
+
+struct RayTraceSectionRowData {
+    U32 imageHeight;
+    U32 rowHeight; 
+    U32 rowWidth; 
+    U32 rowYStart;
+    
+    V3 cameraP; 
+    V3 cameraX;
+    V3 cameraY;
+    
+    
+    F32 filmWidthHalf; 
+    F32 filmHeightHalf; 
+    V3 filmC;
+    
+    World* world;
+    Options options; 
+    SAAData saaData;
+    U32* packedPixelData;
+    
+    RandomSeries series;
+};

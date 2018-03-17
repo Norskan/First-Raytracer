@@ -108,9 +108,10 @@ static inline void RayTraceObjects(V3 rayOrigin, V3 rayDirection,
     result->hitPoint = rayOrigin+(rayDirection*hitDistance);
 }
 
-static inline void GenerateLightSamples(V3* result, U32 resultCount,
-                                        V3 hitNormal, V3 hitPoint,
-                                        F32 sampleSize) {
+static void GenerateLightSamples(V3* result, U32 resultCount,
+                                 V3 hitNormal, V3 hitPoint,
+                                 F32 sampleSize,
+                                 RandomSeries* series) {
     F32 shadowBias = 0.0001f;
     F32 lowerBound = 0.0000001f;
     
@@ -134,8 +135,8 @@ static inline void GenerateLightSamples(V3* result, U32 resultCount,
     F32 radius = sampleSize;
     for(U32 resultIndex = 0; resultIndex < resultCount; ++ resultIndex) {
         //generate 2d sample in circle
-        F32 angle = RandUnitF32() * TAU;
-        F32 r = radius * SquareRoot(RandUnitF32());
+        F32 angle = RandUnitF32(series) * TAU;
+        F32 r = radius * SquareRoot(RandUnitF32(series));
         
         F32 x = r * (F32)cos(angle);
         F32 y = r * (F32)sin(angle);
@@ -148,13 +149,13 @@ static inline void GenerateLightSamples(V3* result, U32 resultCount,
         
         result[resultIndex] = samplePoint;
     }
-    
 }
 
-static inline V3 RayTraceLights(World* world,
-                                U32 objectId, V3 materialColor, 
-                                V3 hitNormal, V3 hitPoint,
-                                U32 lightSamplePointCount, V3* lightSampleDataBuffer, F32 sampleRegion) {
+static V3 RayTraceLights(World* world,
+                         U32 objectId, V3 materialColor, 
+                         V3 hitNormal, V3 hitPoint,
+                         U32 lightSamplePointCount, V3* lightSampleDataBuffer, F32 sampleRegion,
+                         RandomSeries* series) {
     V3 resultColor = {};
     
     Light* lights = world->lights;
@@ -170,7 +171,7 @@ static inline V3 RayTraceLights(World* world,
         
         GenerateLightSamples(lightSampleDataBuffer, lightSamplePointCount, 
                              hitNormal, hitPoint,
-                             sampleRegion);
+                             sampleRegion, series);
         
         F32 lightSampleContribution = 1.0f / lightSamplePointCount;
         for(U32 lightSamplePointIndex = 0; lightSamplePointIndex < lightSamplePointCount; ++lightSamplePointIndex){
@@ -205,7 +206,7 @@ static inline V3 RayTraceLights(World* world,
             
             ShootRayResult lightResult = {};
             RayTraceObjects(lightRayOrigin, lightRayDirection,
-                            world, 
+                            world,
                             traceMaxDistance,
                             &lightResult);
             
@@ -223,10 +224,11 @@ static inline V3 RayTraceLights(World* world,
     return resultColor;
 }
 
-static inline V3 CalculateColor(V3 rayOrigin, V3 rayDirection,
-                                World* world,
-                                U32 lightSamplePointCount, V3* lightSampleDataBuffer, F32 sampleRegion,
-                                U32 depth, U32 lastHitId) {
+static V3 CalculateColor(V3 rayOrigin, V3 rayDirection,
+                         World* world,
+                         U32 lightSamplePointCount, V3* lightSampleDataBuffer, F32 sampleRegion,
+                         U32 depth, U32 lastHitId,
+                         RandomSeries* series) {
     Material* materials = world->materials;
     
     
@@ -248,12 +250,17 @@ static inline V3 CalculateColor(V3 rayOrigin, V3 rayDirection,
         
         Material material = materials[result.hitMatIndex];
         
+#if DEBUG_DISABLE_SHADING     
+        V3 color = material.color;
+#else
         V3 shadedColor = RayTraceLights(world,
                                         result.hitId, material.color, 
                                         result.hitNormal, result.hitPoint,
-                                        lightSamplePointCount, lightSampleDataBuffer, sampleRegion);
+                                        lightSamplePointCount, lightSampleDataBuffer, sampleRegion,
+                                        series);
         V3 color = shadedColor;
         
+#endif
         
         
         if(depth < 8) {
@@ -263,21 +270,22 @@ static inline V3 CalculateColor(V3 rayOrigin, V3 rayDirection,
             V3 newRayOrigin = result.hitPoint;
             
             V3 specularDirection = VectorReflected(rayDirection, result.hitNormal);
+            V3 specularColor = CalculateColor(newRayOrigin, specularDirection,
+                                              world,
+                                              lightSamplePointCount, lightSampleDataBuffer, sampleRegion,
+                                              depth + 1, result.hitId,
+                                              series);
             
+#if 0       
             V3 unitSphereOrigin = newRayOrigin + result.hitNormal;
             V3 randomPoint = RandomPointInUnitSphere(unitSphereOrigin);
             V3 diffuseDirection = randomPoint - newRayOrigin;
             
-            V3 specularColor = CalculateColor(newRayOrigin, specularDirection,
-                                              world,
-                                              lightSamplePointCount, lightSampleDataBuffer, sampleRegion,
-                                              depth + 1, result.hitId);
-            
-#if 0            
             V3 diffuseColor = CalculateColor(newRayOrigin, diffuseDirection,
                                              world,
                                              lightSamplePointCount, lightSampleDataBuffer, sampleRegion,
-                                             depth + 1, result.hitId);
+                                             depth + 1, result.hitId,
+                                             series);
 #endif
             
             V3 diffuseColor = color;
@@ -293,62 +301,9 @@ static inline V3 CalculateColor(V3 rayOrigin, V3 rayDirection,
     }
 }
 
-static inline V3 RayTraceWorld(V3 rayOrigin, V3 rayDirection,
-                               World* world,
-                               U32 lightSamplePointCount, V3* lightSampleDataBuffer, F32 sampleRegion) {
-#if 0    
-    Material* materials = world->materials;
-    V3 resultColor = {1,1,1};
-    
-    U32 maxBounceRays = 8;
-    
-    
-    for(U32 bounceRayIndex = 0; bounceRayIndex < maxBounceRays; ++bounceRayIndex) {
-        ShootRayResult result = {};
-        RayTraceObjects(rayOrigin,
-                        rayDirection,
-                        world,
-                        F32_MAX,
-                        &result);
-        
-        if(result.hit) {
-            V3 materialColor = materials[result.hitMatIndex].color;
-            
-            V3 shadedColor = RayTraceLights(world,
-                                            result.hitId, materialColor, 
-                                            result.hitNormal, result.hitPoint,
-                                            lightSamplePointCount, lightSampleDataBuffer, sampleRegion);
-            
-            if(materials[result.hitMatIndex].reflects) {
-                resultColor = Lerp(resultColor, 0.5f, shadedColor);
-                
-                rayOrigin = result.hitPoint;
-                rayDirection = VectorReflected(rayDirection, result.hitNormal);
-            } 
-            else {
-                resultColor = resultColor * shadedColor;
-            }
-            
-        } else {
-            resultColor = materials[result.hitMatIndex].color;
-            break;
-        }
-    }
-    
-    return resultColor;
-#else
-    
-    return CalculateColor(rayOrigin, rayDirection,
-                          world,
-                          lightSamplePointCount, lightSampleDataBuffer, sampleRegion,
-                          0, U32_MAX);
-    
-#endif
-}
-
-static inline  PixelSamplingPoints CalculatePixelSamplingPoints(V3 bl, 
-                                                                V3 sampleRegionX, V3 sampleRegionY,
-                                                                U32 samplesToTake, U32 samplesPerDim) {
+static PixelSamplingPoints CalculatePixelSamplingPoints(V3 bl, 
+                                                        V3 sampleRegionX, V3 sampleRegionY,
+                                                        U32 samplesToTake, U32 samplesPerDim) {
     //grid uniform distribution
     PixelSamplingPoints result;
     result.count = samplesToTake;
@@ -377,11 +332,11 @@ static inline  PixelSamplingPoints CalculatePixelSamplingPoints(V3 bl,
     return result;
 }
 
-static inline void CalculateSAAData(SAAMode mode, 
-                                    F32 filmWidth, F32 filmHeight,
-                                    U32 imageWidth, U32 imageHeight,
-                                    V3 cameraX, V3 cameraY,
-                                    SAAData* data) {
+static void CalculateSAAData(SAAMode mode, 
+                             F32 filmWidth, F32 filmHeight,
+                             U32 imageWidth, U32 imageHeight,
+                             V3 cameraX, V3 cameraY,
+                             SAAData* data) {
     if(mode == SAAMode_SSAA) {
         V3 pixelSize;
         pixelSize.x = filmWidth / imageWidth;
@@ -395,55 +350,53 @@ static inline void CalculateSAAData(SAAMode mode,
     }
 }
 
-static inline void RayTraceImage(U32 imageHeight, U32 imageWidth,
-                                 V3 cameraP, V3 cameraX, V3 cameraY,
-                                 F32 filmWidthHalf, F32 filmHeightHalf, V3 filmC,
-                                 World* world,
-                                 U32* packedPixelData,
-                                 Options* i_options,
-                                 SAAData* i_saaData) {
+static void RayTraceSectionRow(RayTraceSectionRowData* dataPointer) {
+    RayTraceSectionRowData data = *dataPointer;
+    Options options = data.options;
+    SAAData saaData = data.saaData;
+    U32 rowYEnd = data.rowYStart + data.rowHeight;
     
-    SAAData ssaData = *i_saaData;
-    Options options = *i_options;
-    SAAMode saaMode = options.saaMode;
-    
-    for(U32 imageY = 0; imageY < imageHeight; ++imageY) {
-        F32 viewPortY = - 1 + 2 * ((F32)imageY / (F32)imageHeight);
+    for(U32 rowY = data.rowYStart; rowY < rowYEnd; ++rowY) {
+        F32 viewPortY = - 1 + 2 * ((F32)rowY / (F32)data.imageHeight);
         
-        for(U32 imageX = 0; imageX < imageWidth; ++imageX) {
-            F32 viewPortX = - 1 + 2 * ((F32)imageX / (F32)imageWidth);
+        for(U32 rowX = 0; rowX < data.rowWidth; ++rowX) {
+            F32 viewPortX = - 1 + 2 * ((F32)rowX / (F32)data.rowWidth);
             
-            V3 filmXOffset = cameraX * (viewPortX * filmWidthHalf);
-            V3 filmYOffset = cameraY * (viewPortY * filmHeightHalf);
+            V3 filmXOffset = data.cameraX * (viewPortX * data.filmWidthHalf);
+            V3 filmYOffset = data.cameraY * (viewPortY * data.filmHeightHalf);
             
-            V3 filmP = filmC + filmXOffset + filmYOffset;
+            V3 filmP = data.filmC + filmXOffset + filmYOffset;
             
             V3 pixel = {};
             
-            switch(saaMode) {
+            switch(options.saaMode) {
                 case(SAAMode_None): {
-                    V3 rayOrigin = cameraP;
-                    V3 rayDirection = Normalize(filmP - cameraP);
+                    V3 rayOrigin = data.cameraP;
+                    V3 rayDirection = Normalize(filmP - data.cameraP);
                     
-                    pixel = RayTraceWorld(rayOrigin, rayDirection,
-                                          world,
-                                          options.samplesPerShading, options.sampleDataBuffer, options.sampleRegionSize);
+                    pixel = CalculateColor(rayOrigin, rayDirection,
+                                           data.world,
+                                           options.samplesPerShading, options.sampleDataBuffer, options.sampleRegionSize,
+                                           0, U32_MAX,
+                                           &data.series);
                 } break;
                 case(SAAMode_SSAA): {
                     PixelSamplingPoints samplingPoints = CalculatePixelSamplingPoints(filmP, 
-                                                                                      ssaData.sampleRegionX, ssaData.sampleRegionY, 
+                                                                                      saaData.sampleRegionX, saaData.sampleRegionY, 
                                                                                       options.samplesToTake, options.samplesPerDim);
                     
                     V3Array_64 sampels;
                     for(U32 sampleIndex = 0; sampleIndex < samplingPoints.count; ++sampleIndex) {
                         V3 samplePoint = samplingPoints.points[sampleIndex];
                         
-                        V3 rayOrigin = cameraP;
-                        V3 rayDirection = Normalize(samplePoint - cameraP);
+                        V3 rayOrigin = data.cameraP;
+                        V3 rayDirection = Normalize(samplePoint - data.cameraP);
                         
-                        V3 traceResult = RayTraceWorld(rayOrigin, rayDirection,
-                                                       world,
-                                                       options.samplesPerShading, options.sampleDataBuffer, options.sampleRegionSize);
+                        V3 traceResult = CalculateColor(rayOrigin, rayDirection,
+                                                        data.world,
+                                                        options.samplesPerShading, options.sampleDataBuffer, options.sampleRegionSize,
+                                                        0, U32_MAX,
+                                                        &data.series);
                         
                         sampels[sampleIndex] = traceResult;
                     }
@@ -459,14 +412,61 @@ static inline void RayTraceImage(U32 imageHeight, U32 imageWidth,
                 } break;
             }
             
-            U32 pixelIndex = imageY * imageWidth + imageX;
-            packedPixelData[pixelIndex] = PackColor(pixel); 
-        }
-        
-        if((imageY % 64) == 0) { 
-            F32 progress = (F32)imageY / (F32)imageHeight; 
-            printf("\rProgress %0.2f ", progress); 
-            fflush(stdout); 
+            U32 pixelIndex = rowY * data.rowWidth + rowX;
+            data.packedPixelData[pixelIndex] = PackColor(pixel);
         }
     }
+}
+
+static void RayTraceImage(U32 imageHeight, U32 imageWidth,
+                          V3 cameraP, V3 cameraX, V3 cameraY,
+                          F32 filmWidthHalf, F32 filmHeightHalf, V3 filmC,
+                          World* world,
+                          U32* packedPixelData,
+                          Options* i_options,
+                          SAAData* i_saaData) {
+    
+    SAAData saaData = *i_saaData;
+    Options options = *i_options;
+    
+    U32 cpuCores = GetCPUCores();
+    U32 rowHeight = imageHeight / cpuCores;
+    assert((rowHeight * cpuCores) == imageHeight);
+    
+    RayTraceSectionRowData* dataList = (RayTraceSectionRowData*)malloc(sizeof(RayTraceSectionRowData) * cpuCores);
+    for(U32 cpuCoreIndex = 0; cpuCoreIndex < cpuCores; ++cpuCoreIndex) {
+        U32 rowYStart = rowHeight * cpuCoreIndex;
+        
+        RayTraceSectionRowData rowData;
+        rowData.imageHeight = imageHeight;
+        rowData.rowHeight = rowHeight; 
+        rowData.rowWidth = imageWidth; 
+        rowData.rowYStart = rowYStart;
+        rowData.cameraP = cameraP; 
+        rowData.cameraX = cameraX; 
+        rowData.cameraY = cameraY;;
+        rowData.filmWidthHalf = filmWidthHalf; 
+        rowData.filmHeightHalf = filmHeightHalf;
+        rowData.filmC = filmC;
+        rowData.world = world;
+        rowData.options = options;
+        rowData.saaData = saaData;
+        rowData.packedPixelData = packedPixelData;
+        rowData.series.series = rand();
+        rowData.options.sampleDataBuffer = (V3*)malloc(sizeof(V3) * rowData.options.samplesPerShading);
+        
+        dataList[cpuCoreIndex] = rowData;
+    }
+    
+    CreateMultipleThreadsAndWait((ThreadFunction)RayTraceSectionRow, 
+                                 dataList,
+                                 cpuCores);
+    
+#if 0        
+    if((imageY % 64) == 0) { 
+        F32 progress = (F32)imageY / (F32)imageHeight; 
+        printf("\rProgress %0.2f ", progress); 
+        fflush(stdout); d
+    }
+#endif
 }

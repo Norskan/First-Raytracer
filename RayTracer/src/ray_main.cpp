@@ -27,6 +27,7 @@ Includes
 #include "stdlib.h" 
 #include "string.h"
 #include "float.h"
+#include "assert.h"
 
 typedef unsigned char	   U8;
 typedef unsigned short      U16;
@@ -37,7 +38,6 @@ typedef float			   F32;
 #define U32_MAX ULONG_MAX
 #define ArraySize(array) sizeof(array) / sizeof(array[0]);
 
-#include "ray_os.cpp"
 #include "ray_math.h"
 #include "ray_bmp.h"
 #include "ray_bmp.cpp"
@@ -45,8 +45,11 @@ typedef float			   F32;
 #include "ray_world.h"
 #include "ray_tracing.h"
 
+#define DEBUG_DISABLE_PARALLEL_THREADING 0
+#include "ray_os.cpp"
 
 #define DEBUG_SELFINTERSECTION 1
+#define DEBUG_DISABLE_SHADING  0
 #include "ray_tracing.cpp"
 
 /*
@@ -63,7 +66,6 @@ static void CalculateCameraAxis(V3 cameraP,
 
 int main() {
     printf("Start ray tracing . . .\n");
-    InitRand();
     
     BMP_Image image;
     InitBMPImage(&image,
@@ -111,7 +113,6 @@ int main() {
     maxOptions.samplesToTake = 16;
     maxOptions.samplesPerDim = 4;
     maxOptions.samplesPerShading = 256;
-    maxOptions.sampleDataBuffer = (V3*)malloc(sizeof(V3) * maxOptions.samplesPerShading);
     maxOptions.sampleRegionSize = 0.5;
     
     Options devOptions;
@@ -119,10 +120,19 @@ int main() {
     devOptions.samplesToTake = 4;
     devOptions.samplesPerDim = 2;
     devOptions.samplesPerShading = 128;
-    devOptions.sampleDataBuffer = (V3*)malloc(sizeof(V3) * devOptions.samplesPerShading);
     devOptions.sampleRegionSize = 0.5;
     
-    Options options = devOptions;
+    
+    Options devOptionsMinimal;
+    devOptionsMinimal.saaMode = SAAMode_SSAA;
+    devOptionsMinimal.samplesToTake = 1;
+    devOptionsMinimal.samplesPerDim = 1;
+    devOptionsMinimal.samplesPerShading = 1;
+    devOptionsMinimal.sampleRegionSize = 0.5;
+    
+    
+    Options options = devOptionsMinimal;
+    options = devOptions;
     options = maxOptions;
     
     U32 imageHeight; 

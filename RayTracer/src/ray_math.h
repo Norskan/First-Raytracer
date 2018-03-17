@@ -10,16 +10,28 @@ Constants
 Rand
 */
 
-#include "time.h" //time
-static inline void InitRand() {
-    srand((unsigned int)time(NULL));
+struct RandomSeries {
+    U32 series;
+};
+
+U32 XOrShift32(RandomSeries* series)
+{
+    //Note(ans): ref https://en.wikipedia.org/wiki/Xorshift
+    U32 x = series->series;
+    x ^= x << 13;
+    x ^= x >> 17;
+    x ^= x << 5; 
+    
+    series->series = x;
+    
+    return x;
 }
 
 //returns values between 0 and 1
-static inline F32 RandUnitF32() {
+static F32 RandUnitF32(RandomSeries* series) {
     F32 result;
     
-    result = (F32)rand() / (F32)RAND_MAX;
+    result = (F32)XOrShift32(series) / (F32)U32_MAX;
     
     return result;
 }
@@ -224,26 +236,26 @@ static inline V3 Lerp(V3 a, F32 t, V3 b) {
     return result;
 }
 
-static inline V3 RandomUnitVector() {
+static inline V3 RandomUnitVector(RandomSeries* series) {
     V3 result;
     
-    result.x = RandUnitF32();
-    result.y = RandUnitF32();
-    result.z = RandUnitF32();
+    result.x = RandUnitF32(series);
+    result.y = RandUnitF32(series);
+    result.z = RandUnitF32(series);
     
     return result;
 }
 
-static inline V3 RandomPointInUnitSphere(V3 origin) {
+static inline V3 RandomPointInUnitSphere(V3 origin, RandomSeries* series) {
     V3 result;
     
     V3 randomPoint;
     
     do {
         V3 v;
-        v.x = RandUnitF32();
-        v.y = RandUnitF32();
-        v.z = RandUnitF32();
+        v.x = RandUnitF32(series);
+        v.y = RandUnitF32(series);
+        v.z = RandUnitF32(series);
         
         randomPoint = 2.0f * v - 1.0f;
     } while(LengthRoot(randomPoint) >= 1.0f);

@@ -25,7 +25,7 @@ pushd .\bin
 
 REM compiler flags
 
-set compilerFlags= -EHsc -Od -MTd -nologo -fp:fast -fp:except- -Gm- -GR- -EHa- -Zo -Oi -WX -W4 -wd4201 -wd4100 -wd4189 -wd4505 -wd4127 -FC -Z7
+set compilerFlags= -EHsc -O2 -MTd -nologo -fp:fast -fp:except- -Gm- -GR- -EHa- -Zo -Oi -WX -W4 -wd4201 -wd4100 -wd4189 -wd4505 -wd4127 -FC -Z7
 cl %compilerFlags% -Fe%nameExe% ./../src/ray_main.cpp /link 
 
 copy %copyflags%  %nameExe%.exe %runTree% >NUL

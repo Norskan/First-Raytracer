@@ -10,6 +10,9 @@
 	0.3:
 		- Soft Shadows
 		- Specular, Diffuced Materials 
+	1.0:
+		- Increased Performance with Multithreading and Replacing rand()
+
 ## Result
 ![Raytracer Result](https://github.com/Norskan/Portfolio/blob/master/RayTracer/run_tree/result.bmp?raw=true "Raytracer Result")
 
