@@ -59,6 +59,10 @@ static inline void RayTraceObjects(V3 rayOrigin, V3 rayDirection,
         }
     }
     
+    // optimice performance
+    // - a only needs to be calculated once per ray
+    // - c part two only needs to be calculated once per sphere
+    
     Sphere* spheres = world->spheres;
     U32 sphereCount = world->sphereCount;
     
@@ -110,8 +114,11 @@ static inline void RayTraceObjects(V3 rayOrigin, V3 rayDirection,
 
 static void GenerateLightSamples(V3* result, U32 resultCount,
                                  V3 hitNormal, V3 hitPoint,
-                                 F32 sampleSize,
-                                 RandomSeries* series) {
+                                 RandomSeries* series,
+                                 V3* randomCirclePoints,
+                                 U32 randomCirclePointCount) {
+    
+    
     F32 shadowBias = 0.0001f;
     F32 lowerBound = 0.0000001f;
     
@@ -131,18 +138,13 @@ static void GenerateLightSamples(V3* result, U32 resultCount,
     
     V3 w = Cross(hitNormal, v);
     
-    
-    F32 radius = sampleSize;
     for(U32 resultIndex = 0; resultIndex < resultCount; ++ resultIndex) {
-        //generate 2d sample in circle
-        F32 angle = RandUnitF32(series) * TAU;
-        F32 r = radius * SquareRoot(RandUnitF32(series));
         
-        F32 x = r * (F32)cos(angle);
-        F32 y = r * (F32)sin(angle);
+        U32 randomSampleIndex = RandomU32(series, randomCirclePointCount);
+        V3 randomPoint = randomCirclePoints[randomSampleIndex];
         
         //transform samples to hit normal system
-        V3 samplePoint = (v * x) + (w * y);
+        V3 samplePoint = (v * randomPoint.x) + (w * randomPoint.y);
         
         //transform samples to hitpoint
         samplePoint = samplePoint + sampleOrigin;
@@ -154,8 +156,10 @@ static void GenerateLightSamples(V3* result, U32 resultCount,
 static V3 RayTraceLights(World* world,
                          U32 objectId, V3 materialColor, 
                          V3 hitNormal, V3 hitPoint,
-                         U32 lightSamplePointCount, V3* lightSampleDataBuffer, F32 sampleRegion,
-                         RandomSeries* series) {
+                         U32 lightSamplePointCount, V3* lightSampleDataBuffer,
+                         RandomSeries* series,
+                         V3* randomCirclePoints,
+                         U32 randomCirclePointCount) {
     V3 resultColor = {};
     
     Light* lights = world->lights;
@@ -171,7 +175,9 @@ static V3 RayTraceLights(World* world,
         
         GenerateLightSamples(lightSampleDataBuffer, lightSamplePointCount, 
                              hitNormal, hitPoint,
-                             sampleRegion, series);
+                             series,
+                             randomCirclePoints,
+                             randomCirclePointCount);
         
         F32 lightSampleContribution = 1.0f / lightSamplePointCount;
         for(U32 lightSamplePointIndex = 0; lightSamplePointIndex < lightSamplePointCount; ++lightSamplePointIndex){
@@ -226,9 +232,11 @@ static V3 RayTraceLights(World* world,
 
 static V3 CalculateColor(V3 rayOrigin, V3 rayDirection,
                          World* world,
-                         U32 lightSamplePointCount, V3* lightSampleDataBuffer, F32 sampleRegion,
+                         U32 lightSamplePointCount, V3* lightSampleDataBuffer,
                          U32 depth, U32 lastHitId,
-                         RandomSeries* series) {
+                         RandomSeries* series,
+                         V3* randomCirclePoints,
+                         U32 randomCirclePointCount) {
     Material* materials = world->materials;
     
     
@@ -256,8 +264,10 @@ static V3 CalculateColor(V3 rayOrigin, V3 rayDirection,
         V3 shadedColor = RayTraceLights(world,
                                         result.hitId, material.color, 
                                         result.hitNormal, result.hitPoint,
-                                        lightSamplePointCount, lightSampleDataBuffer, sampleRegion,
-                                        series);
+                                        lightSamplePointCount, lightSampleDataBuffer,
+                                        series,
+                                        randomCirclePoints,
+                                        randomCirclePointCount);
         V3 color = shadedColor;
         
 #endif
@@ -272,9 +282,11 @@ static V3 CalculateColor(V3 rayOrigin, V3 rayDirection,
             V3 specularDirection = VectorReflected(rayDirection, result.hitNormal);
             V3 specularColor = CalculateColor(newRayOrigin, specularDirection,
                                               world,
-                                              lightSamplePointCount, lightSampleDataBuffer, sampleRegion,
+                                              lightSamplePointCount, lightSampleDataBuffer,
                                               depth + 1, result.hitId,
-                                              series);
+                                              series,
+                                              randomCirclePoints,
+                                              randomCirclePointCount);
             
 #if 0       
             V3 unitSphereOrigin = newRayOrigin + result.hitNormal;
@@ -285,7 +297,9 @@ static V3 CalculateColor(V3 rayOrigin, V3 rayDirection,
                                              world,
                                              lightSamplePointCount, lightSampleDataBuffer, sampleRegion,
                                              depth + 1, result.hitId,
-                                             series);
+                                             series,
+                                             randomCirclePoints,
+                                             randomCirclePointCount);
 #endif
             
             V3 diffuseColor = color;
@@ -376,9 +390,11 @@ static void RayTraceSectionRow(RayTraceSectionRowData* dataPointer) {
                     
                     pixel = CalculateColor(rayOrigin, rayDirection,
                                            data.world,
-                                           options.samplesPerShading, options.sampleDataBuffer, options.sampleRegionSize,
+                                           options.samplesPerShading, options.sampleDataBuffer,
                                            0, U32_MAX,
-                                           &data.series);
+                                           &data.series,
+                                           data.randomCirclePoints,
+                                           data.randomCirclePointCount);
                 } break;
                 case(SAAMode_SSAA): {
                     PixelSamplingPoints samplingPoints = CalculatePixelSamplingPoints(filmP, 
@@ -394,9 +410,11 @@ static void RayTraceSectionRow(RayTraceSectionRowData* dataPointer) {
                         
                         V3 traceResult = CalculateColor(rayOrigin, rayDirection,
                                                         data.world,
-                                                        options.samplesPerShading, options.sampleDataBuffer, options.sampleRegionSize,
+                                                        options.samplesPerShading, options.sampleDataBuffer,
                                                         0, U32_MAX,
-                                                        &data.series);
+                                                        &data.series,
+                                                        data.randomCirclePoints,
+                                                        data.randomCirclePointCount);
                         
                         sampels[sampleIndex] = traceResult;
                     }
@@ -434,6 +452,27 @@ static void RayTraceImage(U32 imageHeight, U32 imageWidth,
     assert((rowHeight * cpuCores) == imageHeight);
     
     RayTraceSectionRowData* dataList = (RayTraceSectionRowData*)malloc(sizeof(RayTraceSectionRowData) * cpuCores);
+    
+    U32 randomCirclePointCount = 516;
+    V3* randomCirclePoints = (V3*)malloc(sizeof(V3) * randomCirclePointCount);
+    
+    RandomSeries circleRandomSeries;
+    circleRandomSeries.series = rand();
+    F32 radius = options.sampleRegionSize;
+    for(U32 randomCirclePointIndex = 0;
+        randomCirclePointIndex < randomCirclePointCount; 
+        ++randomCirclePointIndex) {
+        
+        F32 angle = RandUnitF32(&circleRandomSeries) * TAU;
+        F32 r = radius * SquareRoot(RandUnitF32(&circleRandomSeries));
+        
+        V3 randomPoint;
+        randomPoint.x = r * (F32)cos(angle);
+        randomPoint.y = r * (F32)sin(angle);
+        
+        randomCirclePoints[randomCirclePointIndex] = randomPoint;
+    }
+    
     for(U32 cpuCoreIndex = 0; cpuCoreIndex < cpuCores; ++cpuCoreIndex) {
         U32 rowYStart = rowHeight * cpuCoreIndex;
         
@@ -454,6 +493,8 @@ static void RayTraceImage(U32 imageHeight, U32 imageWidth,
         rowData.packedPixelData = packedPixelData;
         rowData.series.series = rand();
         rowData.options.sampleDataBuffer = (V3*)malloc(sizeof(V3) * rowData.options.samplesPerShading);
+        rowData.randomCirclePoints = randomCirclePoints;
+        rowData.randomCirclePointCount = randomCirclePointCount;
         
         dataList[cpuCoreIndex] = rowData;
     }

@@ -11,8 +11,8 @@ struct Options {
     
     // Soft Shadow
     U32 samplesPerShading;
-    V3* sampleDataBuffer;
     F32 sampleRegionSize;
+    V3* sampleDataBuffer;
 };
 
 struct ShootRayResult {
@@ -67,4 +67,6 @@ struct RayTraceSectionRowData {
     U32* packedPixelData;
     
     RandomSeries series;
+    U32 randomCirclePointCount;
+    V3* randomCirclePoints;
 };

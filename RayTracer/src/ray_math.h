@@ -36,6 +36,14 @@ static F32 RandUnitF32(RandomSeries* series) {
     return result;
 }
 
+static U32 RandomU32(RandomSeries* series, U32 max) {
+    U32 result;
+    
+    result = XOrShift32(series) % max;
+    
+    return result;
+}
+
 /*
 F32
 */
